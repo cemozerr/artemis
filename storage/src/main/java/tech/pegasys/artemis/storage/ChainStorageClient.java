@@ -24,15 +24,20 @@ import java.util.Optional;
 import java.util.PriorityQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import net.consensys.cava.bytes.Bytes;
+import net.consensys.cava.bytes.Bytes32;
 import tech.pegasys.artemis.datastructures.blocks.BeaconBlock;
 import tech.pegasys.artemis.datastructures.operations.Attestation;
 import tech.pegasys.artemis.datastructures.state.BeaconState;
 import tech.pegasys.artemis.datastructures.util.AttestationUtil;
 import tech.pegasys.artemis.datastructures.util.BeaconStateUtil;
+import tech.pegasys.artemis.util.hashtree.HashTreeUtil;
 
 /** This class is the ChainStorage client-side logic */
 public class ChainStorageClient implements ChainStorage {
 
+
+  protected final HashMap<Bytes32, Bytes32> stateRootToParentStateRoot = new HashMap<>();
+  protected final HashMap<Bytes32, Bytes32> stateRootToBlockRoot = new HashMap<>();
   protected final HashMap<Integer, Attestation> latestAttestations = new HashMap<>();
   protected final PriorityQueue<BeaconBlock> unprocessedBlocks =
       new PriorityQueue<>(Comparator.comparing(BeaconBlock::getSlot));
@@ -47,6 +52,69 @@ public class ChainStorageClient implements ChainStorage {
   public ChainStorageClient(EventBus eventBus) {
     this.eventBus = eventBus;
     this.eventBus.register(this);
+  }
+
+  /**
+   * Add parent state root using state root as key to storage
+   *
+   * @param state_root
+   * @param parent_state_root
+   */
+  public void addParentStateRoot(Bytes32 state_root, Bytes32 parent_state_root) {
+    ChainStorage.add(state_root, parent_state_root, this.stateRootToParentStateRoot);
+  }
+
+  /**
+   * Get parent state root using state root as key to storage
+   * @param state_root
+   * @return parent_state_root
+   */
+  public Optional<Bytes32> getParentStateRoot(Bytes32 state_root) {
+    return ChainStorage.get(state_root, this.stateRootToParentStateRoot);
+  }
+
+  /**
+   * Add block root using state root as key to storage
+   *
+   * @param state_root
+   * @param block_root
+   */
+  public void addBlockRoot(Bytes32 state_root, Bytes32 block_root) {
+    ChainStorage.add(state_root, block_root, this.stateRootToBlockRoot);
+  }
+
+  /**
+   * Get block root using state root as key to storage
+   *
+   * @param state_root
+   * @param block_root
+   */
+  public Optional<Bytes32> getBlockRoot(Bytes32 state_root) {
+    return ChainStorage.get(state_root, this.stateRootToBlockRoot);
+  }
+
+  /**
+   * Get the root of the previous block in the chain
+   *
+   * @param previous_state_root
+   * @return block_root
+   */
+  public Bytes32 getPreviousBlockRoot(BeaconState previous_state) {
+    Bytes32 previous_state_root = HashTreeUtil.hash_tree_root(previous_state.toBytes());
+    Optional<Bytes32> parent_state_root;
+    Optional<Bytes32> block_root;
+    while (true) {
+      parent_state_root = getParentStateRoot(previous_state_root);
+      if (!parent_state_root.isPresent()) {
+        LOG.fatal("Error getPreviousBlockRoot: Parent state root not found");
+      }
+      block_root = getBlockRoot(parent_state_root.get());
+      if (block_root.isPresent()) {
+        break;
+      }
+      previous_state_root = parent_state_root.get();
+    }
+    return block_root.get();
   }
 
   /**

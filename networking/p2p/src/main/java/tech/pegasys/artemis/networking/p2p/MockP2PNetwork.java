@@ -35,6 +35,8 @@ import tech.pegasys.artemis.networking.p2p.api.P2PNetwork;
 import tech.pegasys.artemis.pow.api.Eth2GenesisEvent;
 import tech.pegasys.artemis.statetransition.StateTransition;
 import tech.pegasys.artemis.statetransition.StateTransitionException;
+import tech.pegasys.artemis.storage.ChainStorage;
+import tech.pegasys.artemis.storage.ChainStorageClient;
 import tech.pegasys.artemis.util.bls.BLSKeyPair;
 import tech.pegasys.artemis.util.bls.BLSSignature;
 import tech.pegasys.artemis.util.hashtree.HashTreeUtil;
@@ -43,10 +45,12 @@ public class MockP2PNetwork implements P2PNetwork {
 
   private final EventBus eventBus;
   private static final Logger LOG = LogManager.getLogger(MockP2PNetwork.class.getName());
+  private ChainStorageClient store;
 
   public MockP2PNetwork(EventBus eventBus) {
     this.eventBus = eventBus;
     this.eventBus.register(this);
+    this.store = ChainStorage.Create(ChainStorageClient.class, eventBus);
   }
 
   /**
@@ -193,38 +197,46 @@ public class MockP2PNetwork implements P2PNetwork {
     try {
       StateTransition stateTransition = new StateTransition("MockP2PNetwork - ");
 
-      BeaconState state = DataStructureUtil.createInitialBeaconState();
-      Bytes32 state_root = HashTreeUtil.hash_tree_root(state.toBytes());
-      BeaconBlock block = BeaconBlock.createGenesis(state_root);
-      Bytes32 parent_root = HashTreeUtil.hash_tree_root(block.toBytes());
+      BeaconState initial_state = DataStructureUtil.createInitialBeaconState();
+      Bytes32 initial_state_root = HashTreeUtil.hash_tree_root(initial_state.toBytes());
+      BeaconBlock genesis_block = BeaconBlock.createGenesis(initial_state_root);
+      Bytes32 genesis_block_root = HashTreeUtil.hash_tree_root(genesis_block.toBytes());
+      this.store.addBlockRoot(initial_state_root, genesis_block_root);
+      this.store.addParentStateRoot(initial_state_root, Bytes32.ZERO);
+      this.store.addBlockRoot(Bytes32.ZERO, Bytes32.ZERO);
 
+      Bytes32 oldStateRoot = initial_state_root;
+      Bytes32 newStateRoot;
       ArrayList<Deposit> deposits = new ArrayList<>();
       while (true) {
         LOG.info("In MockP2PNetwork");
-        state = BeaconState.deepCopy(state);
-        state_root = Bytes32.ZERO;
-        block =
+        this.store.addBlockRoot(Bytes32.ZERO, Bytes32.ZERO);
+        initial_state = BeaconState.deepCopy(initial_state);
+        initial_state_root = Bytes32.ZERO;
+        genesis_block =
             DataStructureUtil.newBeaconBlock(
-                state.getSlot().plus(UnsignedLong.ONE), parent_root, state_root, deposits);
+                initial_state.getSlot().plus(UnsignedLong.ONE), genesis_block_root, initial_state_root, deposits);
 
-        BLSSignature epoch_signature = setEpochSignature(state);
-        block.setRandao_reveal(epoch_signature);
-        stateTransition.initiate(state, block);
-        state_root = HashTreeUtil.hash_tree_root(state.toBytes());
-        block.setState_root(state_root);
-        BLSSignature signed_proposal = signProposalData(state, block);
-        block.setSignature(signed_proposal);
+        BLSSignature epoch_signature = setEpochSignature(initial_state);
+        genesis_block.setRandao_reveal(epoch_signature);
+        stateTransition.initiate(initial_state, genesis_block, store);
+        initial_state_root = HashTreeUtil.hash_tree_root(initial_state.toBytes());
+        genesis_block.setState_root(initial_state_root);
+        BLSSignature signed_proposal = signProposalData(initial_state, genesis_block);
+        genesis_block.setSignature(signed_proposal);
 
         LOG.info("MockP2PNetwork - NEWLY PRODUCED BLOCK");
-        LOG.info("MockP2PNetwork - block.slot: " + block.getSlot());
-        LOG.info("MockP2PNetwork - block.parent_root: " + block.getParent_root());
-        LOG.info("MockP2PNetwork - block.state_root: " + block.getState_root());
-        parent_root = HashTreeUtil.hash_tree_root(block.toBytes());
-        LOG.info("MockP2PNetwork - block.block_root: " + parent_root);
+        LOG.info("MockP2PNetwork - block.slot: " + genesis_block.getSlot());
+        LOG.info("MockP2PNetwork - block.parent_root: " + genesis_block.getParent_root());
+        LOG.info("MockP2PNetwork - block.state_root: " + genesis_block.getState_root());
+        genesis_block_root = HashTreeUtil.hash_tree_root(genesis_block.toBytes());
+        LOG.info("MockP2PNetwork - block.block_root: " + genesis_block_root);
+        this.store.addBlockRoot(initial_state_root, genesis_block_root);
+        this.store.addParentStateRoot(initial_state_root, oldStateRoot);
 
-        this.eventBus.post(block);
+        this.eventBus.post(genesis_block);
         LOG.info("End MockP2PNetwork");
-        Thread.sleep(6000);
+        Thread.sleep(10000);
       }
     } catch (InterruptedException | StateTransitionException e) {
       LOG.warn(e.toString());
