@@ -22,6 +22,9 @@ import tech.pegasys.artemis.statetransition.StateProcessor;
 import tech.pegasys.artemis.util.time.Timer;
 import tech.pegasys.artemis.util.time.TimerFactory;
 
+import java.lang.Class;
+import java.util.Date;
+
 public class BeaconChainService implements ServiceInterface {
 
   private EventBus eventBus;
@@ -31,7 +34,7 @@ public class BeaconChainService implements ServiceInterface {
   public BeaconChainService() {}
 
   @Override
-  @SuppressWarnings({"unchecked", "rawtypes"})
+  @SuppressWarnings({"rawtypes"})
   public void init(ServiceConfig config) {
     this.eventBus = config.getEventBus();
     this.eventBus.register(this);
@@ -40,8 +43,8 @@ public class BeaconChainService implements ServiceInterface {
           new TimerFactory()
               .create(
                   config.getConfig().getTimer(),
-                  new Object[] {this.eventBus, 5, Constants.SECONDS_PER_SLOT},
-                  new Class[] {EventBus.class, Integer.class, Integer.class});
+                  new Object[] {this.eventBus, 5, Constants.SECONDS_PER_SLOT, Date.class},
+                  new Class[] {EventBus.class, Integer.class, Integer.class, Class.class});
     } catch (IllegalArgumentException e) {
       System.exit(1);
     }

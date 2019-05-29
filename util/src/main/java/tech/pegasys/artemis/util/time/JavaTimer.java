@@ -14,8 +14,6 @@
 package tech.pegasys.artemis.util.time;
 
 import com.google.common.eventbus.EventBus;
-import java.lang.reflect.Constructor;
-import java.lang.reflect.InvocationTargetException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -27,26 +25,10 @@ public class JavaTimer implements Timer {
   private int startDelay;
   private int interval;
 
-  @SuppressWarnings({"unchecked", "rawtypes"})
-  public JavaTimer(EventBus eventBus, Integer startDelay, Integer interval)
+  @SuppressWarnings({"rawtypes"})
+  public JavaTimer(EventBus eventBus, Integer startDelay, Integer interval, Class objectClass)
       throws IllegalArgumentException {
-    try {
-      Class type = ScheduledEvent.class;
-      Constructor constructor = type.getConstructor(new Class[] {EventBus.class});
-      this.task = (ScheduledEvent) constructor.newInstance(new Object[] {eventBus});
-    } catch (InstantiationException e) {
-      throw new IllegalArgumentException(
-          "In JavaTimer a InstantiationException was thrown: " + e.toString());
-    } catch (IllegalAccessException e) {
-      throw new IllegalArgumentException(
-          "In JavaTimer a IllegalAccessException was thrown: " + e.toString());
-    } catch (InvocationTargetException e) {
-      throw new IllegalArgumentException(
-          "In JavaTimer a InvocationTargetException was thrown: " + e.toString());
-    } catch (NoSuchMethodException e) {
-      throw new IllegalArgumentException(
-          "In JavaTimer a NoSuchMethodException was thrown: " + e.toString());
-    }
+      this.task = new ScheduledEvent(eventBus, objectClass);
     this.startDelay = startDelay;
     this.interval = interval;
   }

@@ -18,6 +18,8 @@ import com.google.common.eventbus.EventBus;
 import io.vertx.core.Vertx;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import org.apache.logging.log4j.Level;
@@ -41,6 +43,7 @@ import tech.pegasys.artemis.services.powchain.PowchainService;
 import tech.pegasys.artemis.util.alogger.ALogger;
 import tech.pegasys.artemis.util.cli.CommandLineArguments;
 import tech.pegasys.artemis.util.config.ArtemisConfiguration;
+import tech.pegasys.artemis.validator.client.ValidatorClient;
 import tech.pegasys.artemis.validator.coordinator.ValidatorCoordinator;
 
 public class BeaconNode {
@@ -59,6 +62,7 @@ public class BeaconNode {
   private Constants constants;
   private P2PNetwork p2pNetwork;
   private ValidatorCoordinator validatorCoordinator;
+  private List<ValidatorClient> validatorClients;
   private EventBus eventBus;
   private FileProvider fileProvider;
   private EventHandler eventHandler;
@@ -114,6 +118,8 @@ public class BeaconNode {
     System.out.println("Setting logging level to " + cliArgs.getLoggingLevel().name());
     Configurator.setAllLevels("", cliArgs.getLoggingLevel());
     this.validatorCoordinator = new ValidatorCoordinator(serviceConfig);
+    this.validatorClients = new ArrayList<>();
+    validatorClients.add(new ValidatorClient());
   }
 
   public void start() {

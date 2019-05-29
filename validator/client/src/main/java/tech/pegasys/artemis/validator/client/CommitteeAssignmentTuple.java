@@ -13,16 +13,18 @@
 
 package tech.pegasys.artemis.validator.client;
 
+import com.google.common.primitives.UnsignedLong;
 import java.util.List;
 
 public class CommitteeAssignmentTuple {
 
   private List<Integer> validators;
-  private int shard;
-  private int slot;
+  private UnsignedLong shard;
+  private UnsignedLong slot;
   private boolean bool;
 
-  CommitteeAssignmentTuple(List<Integer> validators, int shard, int slot, boolean bool) {
+  CommitteeAssignmentTuple(
+      List<Integer> validators, UnsignedLong shard, UnsignedLong slot, boolean bool) {
     this.validators = validators;
     this.shard = shard;
     this.slot = slot;
@@ -34,11 +36,11 @@ public class CommitteeAssignmentTuple {
     return validators;
   }
 
-  public int getShard() {
+  public UnsignedLong getShard() {
     return shard;
   }
 
-  public int getSlot() {
+  public UnsignedLong getSlot() {
     return slot;
   }
 

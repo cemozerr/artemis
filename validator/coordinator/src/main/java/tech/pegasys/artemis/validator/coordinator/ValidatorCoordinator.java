@@ -55,6 +55,7 @@ public class ValidatorCoordinator {
   private static final ALogger LOG = new ALogger(ValidatorCoordinator.class.getName());
   private final EventBus eventBus;
 
+  private static Date genesisTime;
   private StateTransition stateTransition;
   private final Boolean printEnabled = false;
   private SECP256K1.SecretKey nodeIdentity;
@@ -81,6 +82,10 @@ public class ValidatorCoordinator {
     stateTransition = new StateTransition(printEnabled);
   }
 
+  public static Date getGenesisTime() {
+    return genesisTime;
+  }
+
   @Subscribe
   public void onNewSlot(Date date) {
     if (validatorBlock != null) {
@@ -95,6 +100,7 @@ public class ValidatorCoordinator {
         new HeadStateEvent(
             genesisHeadStateEvent.getHeadState(), genesisHeadStateEvent.getHeadBlock()));
     this.eventBus.post(true);
+    genesisTime = new Date();
   }
 
   @Subscribe
