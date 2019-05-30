@@ -38,9 +38,8 @@ public class QuartzTimer implements Timer {
     SchedulerFactory sf = new StdSchedulerFactory();
     try {
       sched =  sf.getScheduler();
-      System.out.println("scheduler: " + sched);
       ScheduledEvent task = new ScheduledEvent(eventBus, objectClass);
-      job = newJob(SimpleJob.class).build();
+      job = newJob(SimpleJob.class).storeDurably(false).build();
       job.getJobDataMap().put("task", task);
       trigger = newTrigger()
               .startAt(startTime)
@@ -71,7 +70,7 @@ public class QuartzTimer implements Timer {
   @Override
   public void stop() {
     try {
-      sched.shutdown();
+      sched.unscheduleJob(trigger.getKey());
     } catch (SchedulerException e) {
       throw new IllegalArgumentException(
           "In QuartzTimer a SchedulerException was thrown: " + e.toString());

@@ -30,6 +30,7 @@ public class ValidatorClient {
 
   private Timer timer;
   private EventBus eventBus;
+  private Integer GENESIS_CHECK_FREQUENCY = 1;
 
   @SuppressWarnings({"rawtypes"})
   public ValidatorClient() {
@@ -37,27 +38,50 @@ public class ValidatorClient {
     this.eventBus = new AsyncEventBus(executor);
     this.eventBus.register(this);
 
-    try {
-      this.timer =
-          new TimerFactory()
-              .create(
-                  "QuartzTimer",
-                  new Object[] {this.eventBus, 1, Constants.SECONDS_PER_SLOT, Date.class},
-                  new Class[] {EventBus.class, Integer.class, Integer.class, Class.class});
-    } catch (IllegalArgumentException e) {
-      System.exit(1);
-    }
-    this.timer.start();
+    setTimer("beforeGenesis");
     System.out.println("Starting a new validator client");
   }
 
   @Subscribe
-  public void checkIfGenesisEventHappen(Boolean bool) {
-    System.out.println("New slot here in ValidatorClient");
+  public void checkIfGenesisEventHappened(GenesisCheckEvent event) {
+    System.out.println("Checking if Genesis Event happened");
+    Date genesisTime = ValidatorCoordinator.getGenesisTime();
+    if (genesisTime != null) {
+      this.timer.stop();
+      setTimer("afterGenesis");
+    }
   }
 
   @Subscribe
-  public void onNewSlot(Date date) {
-    System.out.println("New slot here in ValidatorClient");
+  public void onNewSlot(DateEvent date) {
+    System.out.println("New slot here in ValidatorClient: " + date.getDate());
+  }
+
+  @SuppressWarnings({"rawtypes"})
+  private void setTimer(String state) {
+    try {
+      switch (state) {
+        case "beforeGenesis":
+          this.timer =
+                  new TimerFactory()
+                          .create(
+                                  "QuartzTimer",
+                                  new Object[]{this.eventBus, 0, GENESIS_CHECK_FREQUENCY, GenesisCheckEvent.class},
+                                  new Class[]{EventBus.class, Integer.class, Integer.class, Class.class});
+          break;
+        case "afterGenesis":
+          this.timer.stop();
+          this.timer =
+                  new TimerFactory()
+                          .create(
+                                  "QuartzTimer",
+                                  new Object[]{this.eventBus, 1, Constants.SECONDS_PER_SLOT, DateEvent.class},
+                                  new Class[]{EventBus.class, Integer.class, Integer.class, Class.class});
+          break;
+      }
+    } catch (IllegalArgumentException e) {
+      System.out.println("Error when setting timer");
+    }
+    this.timer.start();
   }
 }

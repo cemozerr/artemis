@@ -55,7 +55,7 @@ public class ValidatorCoordinator {
   private static final ALogger LOG = new ALogger(ValidatorCoordinator.class.getName());
   private final EventBus eventBus;
 
-  private static Date genesisTime;
+  private static Date genesisTime = null;
   private StateTransition stateTransition;
   private final Boolean printEnabled = false;
   private SECP256K1.SecretKey nodeIdentity;
