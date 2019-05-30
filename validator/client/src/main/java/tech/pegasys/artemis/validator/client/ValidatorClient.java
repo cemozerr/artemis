@@ -30,7 +30,7 @@ public class ValidatorClient {
 
   private Timer timer;
   private EventBus eventBus;
-  private Integer GENESIS_CHECK_FREQUENCY = 1;
+  private Integer GENESIS_CHECK_FREQUENCY = 10000; // in milliseconds
 
   @SuppressWarnings({"rawtypes"})
   public ValidatorClient() {
@@ -38,7 +38,7 @@ public class ValidatorClient {
     this.eventBus = new AsyncEventBus(executor);
     this.eventBus.register(this);
 
-    setTimer("beforeGenesis");
+    setTimer("beforeGenesis", 0);
     System.out.println("Starting a new validator client");
   }
 
@@ -48,7 +48,14 @@ public class ValidatorClient {
     Date genesisTime = ValidatorCoordinator.getGenesisTime();
     if (genesisTime != null) {
       this.timer.stop();
-      setTimer("afterGenesis");
+      Date currentTime = new Date();
+      int durationSinceGenesis = Math.toIntExact(currentTime.getTime() - genesisTime.getTime());
+      System.out.println("durationSinceGenesis: " + durationSinceGenesis);
+      int durationSinceLastSlot = durationSinceGenesis % (Constants.SECONDS_PER_SLOT * 1000);
+      System.out.println("durationSinceLastSlot: " + durationSinceLastSlot);
+      int durationUntilNextSlot = (Constants.SECONDS_PER_SLOT * 1000) - durationSinceLastSlot;
+      System.out.println("durationUntilNextSlot: " + durationUntilNextSlot);
+      setTimer("afterGenesis", durationUntilNextSlot);
     }
   }
 
@@ -58,7 +65,7 @@ public class ValidatorClient {
   }
 
   @SuppressWarnings({"rawtypes"})
-  private void setTimer(String state) {
+  private void setTimer(String state, Integer startDelay) {
     try {
       switch (state) {
         case "beforeGenesis":
@@ -66,7 +73,7 @@ public class ValidatorClient {
                   new TimerFactory()
                           .create(
                                   "QuartzTimer",
-                                  new Object[]{this.eventBus, 0, GENESIS_CHECK_FREQUENCY, GenesisCheckEvent.class},
+                                  new Object[]{this.eventBus, startDelay, GENESIS_CHECK_FREQUENCY, GenesisCheckEvent.class},
                                   new Class[]{EventBus.class, Integer.class, Integer.class, Class.class});
           break;
         case "afterGenesis":
@@ -75,13 +82,14 @@ public class ValidatorClient {
                   new TimerFactory()
                           .create(
                                   "QuartzTimer",
-                                  new Object[]{this.eventBus, 1, Constants.SECONDS_PER_SLOT, DateEvent.class},
+                                  new Object[]{this.eventBus, startDelay, Constants.SECONDS_PER_SLOT * 1000, DateEvent.class},
                                   new Class[]{EventBus.class, Integer.class, Integer.class, Class.class});
           break;
       }
     } catch (IllegalArgumentException e) {
       System.out.println("Error when setting timer");
     }
+    System.out.println("starting timer in validator client");
     this.timer.start();
   }
 }

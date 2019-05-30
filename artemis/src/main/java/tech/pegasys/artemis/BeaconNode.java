@@ -119,7 +119,6 @@ public class BeaconNode {
     Configurator.setAllLevels("", cliArgs.getLoggingLevel());
     this.validatorCoordinator = new ValidatorCoordinator(serviceConfig);
     this.validatorClients = new ArrayList<>();
-    validatorClients.add(new ValidatorClient());
   }
 
   public void start() {
@@ -137,6 +136,9 @@ public class BeaconNode {
       serviceController.startAll(cliArgs);
       // Start p2p adapter
       this.p2pNetwork.run();
+
+      // Start one validator
+      validatorClients.add(new ValidatorClient());
     } catch (java.util.concurrent.CompletionException e) {
       LOG.log(Level.FATAL, e.toString());
     }

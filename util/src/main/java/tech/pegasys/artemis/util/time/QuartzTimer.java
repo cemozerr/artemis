@@ -38,14 +38,14 @@ public class QuartzTimer implements Timer {
     SchedulerFactory sf = new StdSchedulerFactory();
     try {
       sched =  sf.getScheduler();
+      sched.start();
       ScheduledEvent task = new ScheduledEvent(eventBus, objectClass);
       job = newJob(SimpleJob.class).storeDurably(false).build();
       job.getJobDataMap().put("task", task);
       trigger = newTrigger()
               .startAt(startTime)
-              .withSchedule(simpleSchedule().withIntervalInSeconds(interval).repeatForever())
+              .withSchedule(simpleSchedule().withIntervalInMilliseconds(interval).repeatForever())
               .build();
-      sched.scheduleJob(job, trigger);
     } catch (SchedulerException e) {
       throw new IllegalArgumentException(
           "In QuartzTimer a SchedulerException was thrown: " + e.toString());
@@ -54,13 +54,13 @@ public class QuartzTimer implements Timer {
 
   @SuppressWarnings({"rawtypes"})
   public QuartzTimer(EventBus eventBus, Integer startDelay, Integer interval, Class objectClass) {
-    this(eventBus, DateBuilder.nextGivenSecondDate(null, startDelay), interval, objectClass);
+    this(eventBus, DateBuilder.futureDate(startDelay, DateBuilder.IntervalUnit.MILLISECOND), interval, objectClass);
   }
 
   @Override
   public void start() throws IllegalArgumentException {
     try {
-      sched.start();
+      sched.scheduleJob(job, trigger);
     } catch (SchedulerException e) {
       throw new IllegalArgumentException(
           "In QuartzTimer a SchedulerException was thrown: " + e.toString());
