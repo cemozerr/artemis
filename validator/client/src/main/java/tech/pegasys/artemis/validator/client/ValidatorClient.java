@@ -31,6 +31,7 @@ public class ValidatorClient {
   private Timer timer;
   private EventBus eventBus;
   private Integer GENESIS_CHECK_FREQUENCY = 10000; // in milliseconds
+  private Integer DELTA = 800; // in milliseconds
 
   @SuppressWarnings({"rawtypes"})
   public ValidatorClient() {
@@ -50,12 +51,9 @@ public class ValidatorClient {
       this.timer.stop();
       Date currentTime = new Date();
       int durationSinceGenesis = Math.toIntExact(currentTime.getTime() - genesisTime.getTime());
-      System.out.println("durationSinceGenesis: " + durationSinceGenesis);
       int durationSinceLastSlot = durationSinceGenesis % (Constants.SECONDS_PER_SLOT * 1000);
-      System.out.println("durationSinceLastSlot: " + durationSinceLastSlot);
       int durationUntilNextSlot = (Constants.SECONDS_PER_SLOT * 1000) - durationSinceLastSlot;
-      System.out.println("durationUntilNextSlot: " + durationUntilNextSlot);
-      setTimer("afterGenesis", durationUntilNextSlot);
+      setTimer("afterGenesis", durationUntilNextSlot - DELTA);
     }
   }
 
