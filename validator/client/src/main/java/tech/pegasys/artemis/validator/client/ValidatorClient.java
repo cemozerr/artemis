@@ -13,101 +13,96 @@
 
 package tech.pegasys.artemis.validator.client;
 
-import static java.lang.Math.toIntExact;
-import static tech.pegasys.artemis.datastructures.Constants.SLOTS_PER_EPOCH;
-import static tech.pegasys.artemis.datastructures.util.BeaconStateUtil.get_beacon_proposer_index;
-import static tech.pegasys.artemis.datastructures.util.BeaconStateUtil.get_crosslink_committees_at_slot;
-import static tech.pegasys.artemis.datastructures.util.BeaconStateUtil.get_current_epoch;
-import static tech.pegasys.artemis.datastructures.util.BeaconStateUtil.get_epoch_start_slot;
-import static tech.pegasys.artemis.datastructures.util.BeaconStateUtil.get_previous_epoch;
+import com.google.common.eventbus.AsyncEventBus;
+import com.google.common.eventbus.EventBus;
+import com.google.common.eventbus.Subscribe;
+
+import java.util.Date;
+import java.util.Optional;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import com.google.common.primitives.UnsignedLong;
-import java.math.BigInteger;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Optional;
-import org.apache.tuweni.bytes.Bytes;
-import org.web3j.crypto.Credentials;
-import org.web3j.protocol.Web3j;
-import org.web3j.tx.gas.DefaultGasProvider;
 import tech.pegasys.artemis.datastructures.Constants;
-import tech.pegasys.artemis.datastructures.state.BeaconState;
-import tech.pegasys.artemis.datastructures.state.CrosslinkCommittee;
-import tech.pegasys.artemis.pow.contract.DepositContract;
-import tech.pegasys.artemis.util.mikuli.BLS12381;
+import tech.pegasys.artemis.util.time.Timer;
+import tech.pegasys.artemis.util.time.TimerFactory;
+import tech.pegasys.artemis.validator.coordinator.CommitteeAssignmentTuple;
+import tech.pegasys.artemis.validator.coordinator.ValidatorCoordinator;
+import java.lang.Class;
 
 public class ValidatorClient {
 
-  public ValidatorClient() {}
+  private Timer timer;
+  private UnsignedLong slot;
+  private EventBus eventBus;
+  private Integer GENESIS_CHECK_FREQUENCY = 10000; // in milliseconds
+  private Integer DELTA = 800; // in milliseconds
 
-  /**
-   * Return the committee assignment in the ``epoch`` for ``validator_index`` and
-   * ``registry_change``. ``assignment`` returned is a tuple of the following form: *
-   * ``assignment[0]`` is the list of validators in the committee * ``assignment[1]`` is the shard
-   * to which the committee is assigned * ``assignment[2]`` is the slot at which the committee is
-   * assigned * ``assignment[3]`` is a bool signalling if the validator is expected to propose a
-   * beacon block at the assigned slot.
-   *
-   * @param state the BeaconState.
-   * @param epoch either on or between previous or current epoch.
-   * @param validator_index the validator that is calling this function.
-   * @param registry_change whether there has been a validator registry change.
-   * @return Optional.of(CommitteeAssignmentTuple) or Optional.empty.
-   */
-  public Optional<CommitteeAssignmentTuple> get_committee_assignment(
-      BeaconState state, long epoch, int validator_index, boolean registry_change) {
-    long previous_epoch = get_previous_epoch(state).longValue();
-    long next_epoch = get_current_epoch(state).longValue();
-    assert previous_epoch <= epoch && epoch <= next_epoch;
+  @SuppressWarnings({"rawtypes"})
+  public ValidatorClient() {
+    ExecutorService executor = Executors.newSingleThreadExecutor();
+    this.eventBus = new AsyncEventBus(executor);
+    this.eventBus.register(this);
 
-    int epoch_start_slot =
-        toIntExact(get_epoch_start_slot(UnsignedLong.valueOf(epoch)).longValue());
-
-    for (int slot = epoch_start_slot; slot < epoch_start_slot + SLOTS_PER_EPOCH; slot++) {
-
-      ArrayList<CrosslinkCommittee> crosslink_committees =
-          get_crosslink_committees_at_slot(state, UnsignedLong.valueOf(slot), registry_change);
-      ArrayList<CrosslinkCommittee> selected_committees = new ArrayList<>();
-
-      for (CrosslinkCommittee committee : crosslink_committees) {
-        if (committee.getCommittee().contains(validator_index)) {
-          selected_committees.add(committee);
-        }
-      }
-
-      if (selected_committees.size() > 0) {
-        List<Integer> validators = selected_committees.get(0).getCommittee();
-        int shard = toIntExact(selected_committees.get(0).getShard().longValue());
-        List<Integer> first_committee_at_slot =
-            crosslink_committees.get(0).getCommittee(); // List[ValidatorIndex]
-        boolean is_proposer =
-            validator_index
-                == get_beacon_proposer_index(state, UnsignedLong.valueOf(slot), registry_change);
-
-        return Optional.of(new CommitteeAssignmentTuple(validators, shard, slot, is_proposer));
-      }
-    }
-    return Optional.empty();
+    setTimer("beforeGenesis", 0);
+    System.out.println("Starting a new validator client");
   }
 
-  public static void registerValidatorEth1(
-      Validator validator, long amount, String address, Web3j web3j, DefaultGasProvider gasProvider)
-      throws Exception {
-    Credentials credentials =
-        Credentials.create(validator.getSecpKeys().secretKey().bytes().toHexString());
-    DepositContract contract = DepositContract.load(address, web3j, credentials, gasProvider);
-    Bytes deposit_data =
-        Bytes.wrap(
-            validator.getPubkey().getPublicKey().toBytesCompressed(),
-            validator.getWithdrawal_credentials(),
-            Bytes.ofUnsignedLong(amount));
-    deposit_data =
-        Bytes.wrap(
-            deposit_data,
-            BLS12381
-                .sign(validator.getBlsKeys(), deposit_data, Constants.DOMAIN_DEPOSIT)
-                .signature()
-                .toBytesCompressed());
-    contract.deposit(deposit_data.toArray(), new BigInteger(amount + "000000000")).send();
+  @Subscribe
+  public void checkIfGenesisEventHappened(GenesisCheckEvent event) {
+    System.out.println("Checking if Genesis Event happened");
+    Date genesisTime = ValidatorCoordinator.getGenesisTime();
+    if (genesisTime != null) {
+      this.timer.stop();
+      Date currentTime = new Date();
+      int durationSinceGenesis = Math.toIntExact(currentTime.getTime() - genesisTime.getTime());
+      slot = UnsignedLong.valueOf(Constants.GENESIS_SLOT + (durationSinceGenesis / Constants.SECONDS_PER_SLOT));
+      int durationSinceLastSlot = durationSinceGenesis % (Constants.SECONDS_PER_SLOT * 1000);
+      int durationUntilNextSlot = (Constants.SECONDS_PER_SLOT * 1000) - durationSinceLastSlot;
+      setTimer("afterGenesis", durationUntilNextSlot - DELTA);
+    }
+  }
+
+  @Subscribe
+  public void onNewSlot(DateEvent date) {
+    slot =
+    System.out.println("New slot here in ValidatorClient: " + date.getDate());
+    int validator_index = 2;
+    boolean registry_change = false;
+    Optional<CommitteeAssignmentTuple> committeeAssignment
+            = ValidatorCoordinator.get_committee_assignment(epoch, validator_index, registry_change);
+    System.out.println("shard: " + committeeAssignment.get().getShard());
+    System.out.println("slot: " + committeeAssignment.get().getSlot());
+    System.out.println("validators: " + committeeAssignment.get().getValidators());
+    System.out.println("isProposer: " + committeeAssignment.get().isProposer());
+  }
+
+  @SuppressWarnings({"rawtypes"})
+  private void setTimer(String state, Integer startDelay) {
+    try {
+      switch (state) {
+        case "beforeGenesis":
+          this.timer =
+                  new TimerFactory()
+                          .create(
+                                  "QuartzTimer",
+                                  new Object[]{this.eventBus, startDelay, GENESIS_CHECK_FREQUENCY, GenesisCheckEvent.class},
+                                  new Class[]{EventBus.class, Integer.class, Integer.class, Class.class});
+          break;
+        case "afterGenesis":
+          this.timer.stop();
+          this.timer =
+                  new TimerFactory()
+                          .create(
+                                  "QuartzTimer",
+                                  new Object[]{this.eventBus, startDelay, Constants.SECONDS_PER_SLOT * 1000, DateEvent.class},
+                                  new Class[]{EventBus.class, Integer.class, Integer.class, Class.class});
+          break;
+      }
+    } catch (IllegalArgumentException e) {
+      System.out.println("Error when setting timer");
+    }
+    System.out.println("starting timer in validator client");
+    this.timer.start();
   }
 }

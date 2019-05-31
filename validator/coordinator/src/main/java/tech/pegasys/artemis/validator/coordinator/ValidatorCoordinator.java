@@ -13,7 +13,15 @@
 
 package tech.pegasys.artemis.validator.coordinator;
 
+import static com.google.common.base.Preconditions.checkArgument;
 import static java.lang.StrictMath.toIntExact;
+import static tech.pegasys.artemis.datastructures.Constants.SLOTS_PER_EPOCH;
+import static tech.pegasys.artemis.datastructures.util.BeaconStateUtil.get_beacon_proposer_index;
+import static tech.pegasys.artemis.datastructures.util.BeaconStateUtil.get_crosslink_committees_at_slot;
+import static tech.pegasys.artemis.datastructures.util.BeaconStateUtil.get_current_epoch;
+import static tech.pegasys.artemis.datastructures.util.BeaconStateUtil.get_epoch_start_slot;
+import static tech.pegasys.artemis.datastructures.util.BeaconStateUtil.get_previous_epoch;
+import static tech.pegasys.artemis.datastructures.util.BeaconStateUtil.slot_to_epoch;
 
 import com.google.common.eventbus.EventBus;
 import com.google.common.eventbus.Subscribe;
@@ -23,6 +31,7 @@ import java.util.Comparator;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.PriorityBlockingQueue;
 import org.apache.logging.log4j.Level;
 import org.apache.tuweni.bytes.Bytes32;
@@ -35,6 +44,7 @@ import tech.pegasys.artemis.datastructures.operations.Attestation;
 import tech.pegasys.artemis.datastructures.operations.Deposit;
 import tech.pegasys.artemis.datastructures.state.BeaconState;
 import tech.pegasys.artemis.datastructures.state.BeaconStateWithCache;
+import tech.pegasys.artemis.datastructures.state.CrosslinkCommittee;
 import tech.pegasys.artemis.datastructures.util.AttestationUtil;
 import tech.pegasys.artemis.datastructures.util.BeaconStateUtil;
 import tech.pegasys.artemis.datastructures.util.DataStructureUtil;
@@ -55,6 +65,8 @@ public class ValidatorCoordinator {
   private static final ALogger LOG = new ALogger(ValidatorCoordinator.class.getName());
   private final EventBus eventBus;
 
+  private static BeaconStateWithCache headState;
+  private static Date genesisTime = null;
   private StateTransition stateTransition;
   private final Boolean printEnabled = false;
   private SECP256K1.SecretKey nodeIdentity;
@@ -81,6 +93,22 @@ public class ValidatorCoordinator {
     stateTransition = new StateTransition(printEnabled);
   }
 
+  public static Date getGenesisTime() {
+    return genesisTime;
+  }
+
+  public static Optional<CommitteeAssignmentTuple> get_committee_assignment(UnsignedLong epoch,
+                                                                            int validator_index,
+                                                                            boolean registry_change) {
+    return get_committee_assignment(
+            headState,
+            slot_to_epoch(headState.getSlot()),
+            validator_index,
+            registry_change
+    );
+
+  }
+
   @Subscribe
   public void onNewSlot(Date date) {
     if (validatorBlock != null) {
@@ -95,12 +123,13 @@ public class ValidatorCoordinator {
         new HeadStateEvent(
             genesisHeadStateEvent.getHeadState(), genesisHeadStateEvent.getHeadBlock()));
     this.eventBus.post(true);
+    genesisTime = new Date();
   }
 
   @Subscribe
   public void onNewHeadStateEvent(HeadStateEvent headStateEvent) {
     // Retrieve headState and headBlock from event
-    BeaconStateWithCache headState = headStateEvent.getHeadState();
+    headState = headStateEvent.getHeadState();
     BeaconBlock headBlock = headStateEvent.getHeadBlock();
 
     List<Attestation> attestations =
@@ -161,7 +190,7 @@ public class ValidatorCoordinator {
     if (headState
         .getSlot()
         .plus(UnsignedLong.ONE)
-        .mod(UnsignedLong.valueOf(Constants.SLOTS_PER_EPOCH))
+        .mod(UnsignedLong.valueOf(SLOTS_PER_EPOCH))
         .equals(UnsignedLong.ZERO)) {
       BeaconStateWithCache newState = BeaconStateWithCache.deepCopy(headState);
       try {
@@ -169,14 +198,15 @@ public class ValidatorCoordinator {
       } catch (StateTransitionException e) {
         LOG.log(Level.WARN, e.toString(), printEnabled);
       }
-      proposerIndex = BeaconStateUtil.get_beacon_proposer_index(newState, newState.getSlot());
+      proposerIndex = get_beacon_proposer_index(newState, newState.getSlot());
       proposerPubkey = newState.getValidator_registry().get(proposerIndex).getPubkey();
     } else {
       proposerIndex =
-          BeaconStateUtil.get_beacon_proposer_index(
+          get_beacon_proposer_index(
               headState, headState.getSlot().plus(UnsignedLong.ONE));
       proposerPubkey = headState.getValidator_registry().get(proposerIndex).getPubkey();
     }
+    System.out.println("Proposer index in coordinator: " + proposerIndex);
     if (validatorSet.containsKey(proposerPubkey)) {
       Bytes32 blockRoot = headBlock.signed_root("signature");
       createNewBlock(headState, blockRoot, validatorSet.get(proposerPubkey));
@@ -280,5 +310,54 @@ public class ValidatorCoordinator {
     LOG.log(Level.INFO, "slot: " + state.getSlot().longValue(), printEnabled);
     LOG.log(Level.INFO, "domain: " + domain, printEnabled);
     return signature;
+  }
+
+  /**
+   * Return the committee assignment in the ``epoch`` for ``validator_index`` and
+   * ``registry_change``. ``assignment`` returned is a tuple of the following form: *
+   * ``assignment[0]`` is the list of validators in the committee * ``assignment[1]`` is the shard
+   * to which the committee is assigned * ``assignment[2]`` is the slot at which the committee is
+   * assigned * ``assignment[3]`` is a bool signalling if the validator is expected to propose a
+   * beacon block at the assigned slot.
+   *
+   * @param state the BeaconState.
+   * @param epoch either on or between previous or current epoch.
+   * @param validator_index the validator that is calling this function.
+   * @param registry_change whether there has been a validator registry change.
+   * @return Optional.of(CommitteeAssignmentTuple) or Optional.empty.
+   */
+  private static Optional<CommitteeAssignmentTuple> get_committee_assignment(
+      BeaconState state, UnsignedLong epoch, int validator_index, boolean registry_change) {
+    UnsignedLong previous_epoch = get_previous_epoch(state);
+    UnsignedLong next_epoch = get_current_epoch(state).plus(UnsignedLong.ONE);
+    checkArgument(previous_epoch.compareTo(epoch) <= 0);
+    checkArgument(epoch.compareTo(next_epoch) <= 0);
+
+    UnsignedLong epoch_start_slot = get_epoch_start_slot(epoch);
+
+    for (UnsignedLong slot = epoch_start_slot;
+        slot.compareTo(epoch_start_slot.plus(UnsignedLong.valueOf(SLOTS_PER_EPOCH))) <= 0;
+        slot = slot.plus(UnsignedLong.ONE)) {
+
+      ArrayList<CrosslinkCommittee> crosslink_committees =
+          get_crosslink_committees_at_slot(state, slot, registry_change);
+
+      ArrayList<CrosslinkCommittee> selected_committees = new ArrayList<>();
+      for (CrosslinkCommittee committee : crosslink_committees) {
+        if (committee.getCommittee().contains(validator_index)) {
+          selected_committees.add(committee);
+        }
+      }
+
+      if (selected_committees.size() > 0) {
+        List<Integer> validators = selected_committees.get(0).getCommittee();
+        UnsignedLong shard = selected_committees.get(0).getShard();
+        boolean is_proposer =
+            validator_index == get_beacon_proposer_index(state, slot, registry_change);
+
+        return Optional.of(new CommitteeAssignmentTuple(validators, shard, slot, is_proposer));
+      }
+    }
+    return Optional.empty();
   }
 }

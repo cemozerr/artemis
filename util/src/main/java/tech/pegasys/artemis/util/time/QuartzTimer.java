@@ -19,7 +19,6 @@ import static org.quartz.TriggerBuilder.newTrigger;
 
 import com.google.common.eventbus.EventBus;
 import java.util.Date;
-import java.util.UUID;
 import org.quartz.DateBuilder;
 import org.quartz.JobDetail;
 import org.quartz.Scheduler;
@@ -33,39 +32,35 @@ public class QuartzTimer implements Timer {
   final SimpleTrigger trigger;
   final JobDetail job;
 
-  @SuppressWarnings({"unchecked"})
-  public QuartzTimer(EventBus eventBus, Date startTime, Integer interval)
+  @SuppressWarnings({"rawtypes"})
+  public QuartzTimer(EventBus eventBus, Date startTime, Integer interval, Class objectClass)
       throws IllegalArgumentException {
     SchedulerFactory sf = new StdSchedulerFactory();
     try {
-      sched = sf.getScheduler();
-      UUID uuid = UUID.randomUUID();
-      job =
-          newJob(ScheduledEvent.class)
-              .withIdentity(EventBus.class.getSimpleName() + uuid.toString(), "group")
-              .build();
-      job.getJobDataMap().put(EventBus.class.getSimpleName(), eventBus);
-      trigger =
-          newTrigger()
-              .withIdentity("trigger-" + EventBus.class.getSimpleName() + uuid.toString(), "group")
+      sched =  sf.getScheduler();
+      sched.start();
+      ScheduledEvent task = new ScheduledEvent(eventBus, objectClass);
+      job = newJob(SimpleJob.class).storeDurably(false).build();
+      job.getJobDataMap().put("task", task);
+      trigger = newTrigger()
               .startAt(startTime)
-              .withSchedule(simpleSchedule().withIntervalInSeconds(interval).repeatForever())
+              .withSchedule(simpleSchedule().withIntervalInMilliseconds(interval).repeatForever())
               .build();
-      sched.scheduleJob(job, trigger);
     } catch (SchedulerException e) {
       throw new IllegalArgumentException(
           "In QuartzTimer a SchedulerException was thrown: " + e.toString());
     }
   }
 
-  public QuartzTimer(EventBus eventBus, Integer startDelay, Integer interval) {
-    this(eventBus, DateBuilder.nextGivenSecondDate(null, startDelay), interval);
+  @SuppressWarnings({"rawtypes"})
+  public QuartzTimer(EventBus eventBus, Integer startDelay, Integer interval, Class objectClass) {
+    this(eventBus, DateBuilder.futureDate(startDelay, DateBuilder.IntervalUnit.MILLISECOND), interval, objectClass);
   }
 
   @Override
   public void start() throws IllegalArgumentException {
     try {
-      sched.start();
+      sched.scheduleJob(job, trigger);
     } catch (SchedulerException e) {
       throw new IllegalArgumentException(
           "In QuartzTimer a SchedulerException was thrown: " + e.toString());
@@ -75,7 +70,7 @@ public class QuartzTimer implements Timer {
   @Override
   public void stop() {
     try {
-      sched.shutdown();
+      sched.unscheduleJob(trigger.getKey());
     } catch (SchedulerException e) {
       throw new IllegalArgumentException(
           "In QuartzTimer a SchedulerException was thrown: " + e.toString());
