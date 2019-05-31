@@ -18,17 +18,22 @@ import com.google.common.eventbus.EventBus;
 import com.google.common.eventbus.Subscribe;
 
 import java.util.Date;
+import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+
+import com.google.common.primitives.UnsignedLong;
 import tech.pegasys.artemis.datastructures.Constants;
 import tech.pegasys.artemis.util.time.Timer;
 import tech.pegasys.artemis.util.time.TimerFactory;
+import tech.pegasys.artemis.validator.coordinator.CommitteeAssignmentTuple;
 import tech.pegasys.artemis.validator.coordinator.ValidatorCoordinator;
 import java.lang.Class;
 
 public class ValidatorClient {
 
   private Timer timer;
+  private UnsignedLong slot;
   private EventBus eventBus;
   private Integer GENESIS_CHECK_FREQUENCY = 10000; // in milliseconds
   private Integer DELTA = 800; // in milliseconds
@@ -51,6 +56,7 @@ public class ValidatorClient {
       this.timer.stop();
       Date currentTime = new Date();
       int durationSinceGenesis = Math.toIntExact(currentTime.getTime() - genesisTime.getTime());
+      slot = UnsignedLong.valueOf(Constants.GENESIS_SLOT + (durationSinceGenesis / Constants.SECONDS_PER_SLOT));
       int durationSinceLastSlot = durationSinceGenesis % (Constants.SECONDS_PER_SLOT * 1000);
       int durationUntilNextSlot = (Constants.SECONDS_PER_SLOT * 1000) - durationSinceLastSlot;
       setTimer("afterGenesis", durationUntilNextSlot - DELTA);
@@ -59,7 +65,16 @@ public class ValidatorClient {
 
   @Subscribe
   public void onNewSlot(DateEvent date) {
+    slot =
     System.out.println("New slot here in ValidatorClient: " + date.getDate());
+    int validator_index = 2;
+    boolean registry_change = false;
+    Optional<CommitteeAssignmentTuple> committeeAssignment
+            = ValidatorCoordinator.get_committee_assignment(epoch, validator_index, registry_change);
+    System.out.println("shard: " + committeeAssignment.get().getShard());
+    System.out.println("slot: " + committeeAssignment.get().getSlot());
+    System.out.println("validators: " + committeeAssignment.get().getValidators());
+    System.out.println("isProposer: " + committeeAssignment.get().isProposer());
   }
 
   @SuppressWarnings({"rawtypes"})

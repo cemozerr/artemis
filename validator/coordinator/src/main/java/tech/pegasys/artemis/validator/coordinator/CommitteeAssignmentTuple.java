@@ -11,7 +11,7 @@
  * specific language governing permissions and limitations under the License.
  */
 
-package tech.pegasys.artemis.validator.client;
+package tech.pegasys.artemis.validator.coordinator;
 
 import com.google.common.primitives.UnsignedLong;
 import java.util.List;
@@ -21,14 +21,14 @@ public class CommitteeAssignmentTuple {
   private List<Integer> validators;
   private UnsignedLong shard;
   private UnsignedLong slot;
-  private boolean bool;
+  private boolean isProposer;
 
   CommitteeAssignmentTuple(
-      List<Integer> validators, UnsignedLong shard, UnsignedLong slot, boolean bool) {
+      List<Integer> validators, UnsignedLong shard, UnsignedLong slot, boolean isProposer) {
     this.validators = validators;
     this.shard = shard;
     this.slot = slot;
-    this.bool = bool;
+    this.isProposer = isProposer;
   }
 
   /** ******************* * GETTERS & SETTERS * * ******************* */
@@ -44,7 +44,7 @@ public class CommitteeAssignmentTuple {
     return slot;
   }
 
-  public boolean isBool() {
-    return bool;
+  public boolean isProposer() {
+    return isProposer;
   }
 }

@@ -42,54 +42,7 @@ import tech.pegasys.artemis.util.mikuli.PublicKey;
 
 public class ValidatorClientUtil {
 
-  /**
-   * Return the committee assignment in the ``epoch`` for ``validator_index`` and
-   * ``registry_change``. ``assignment`` returned is a tuple of the following form: *
-   * ``assignment[0]`` is the list of validators in the committee * ``assignment[1]`` is the shard
-   * to which the committee is assigned * ``assignment[2]`` is the slot at which the committee is
-   * assigned * ``assignment[3]`` is a bool signalling if the validator is expected to propose a
-   * beacon block at the assigned slot.
-   *
-   * @param state the BeaconState.
-   * @param epoch either on or between previous or current epoch.
-   * @param validator_index the validator that is calling this function.
-   * @param registry_change whether there has been a validator registry change.
-   * @return Optional.of(CommitteeAssignmentTuple) or Optional.empty.
-   */
-  public static Optional<CommitteeAssignmentTuple> get_committee_assignment(
-      BeaconState state, UnsignedLong epoch, int validator_index, boolean registry_change) {
-    UnsignedLong previous_epoch = get_previous_epoch(state);
-    UnsignedLong next_epoch = get_current_epoch(state).plus(UnsignedLong.ONE);
-    checkArgument(previous_epoch.compareTo(epoch) <= 0);
-    checkArgument(epoch.compareTo(next_epoch) <= 0);
 
-    UnsignedLong epoch_start_slot = get_epoch_start_slot(epoch);
-
-    for (UnsignedLong slot = epoch_start_slot;
-        slot.compareTo(epoch_start_slot.plus(UnsignedLong.valueOf(SLOTS_PER_EPOCH))) <= 0;
-        slot = slot.plus(UnsignedLong.ONE)) {
-
-      ArrayList<CrosslinkCommittee> crosslink_committees =
-          get_crosslink_committees_at_slot(state, slot, registry_change);
-
-      ArrayList<CrosslinkCommittee> selected_committees = new ArrayList<>();
-      for (CrosslinkCommittee committee : crosslink_committees) {
-        if (committee.getCommittee().contains(validator_index)) {
-          selected_committees.add(committee);
-        }
-      }
-
-      if (selected_committees.size() > 0) {
-        List<Integer> validators = selected_committees.get(0).getCommittee();
-        UnsignedLong shard = selected_committees.get(0).getShard();
-        boolean is_proposer =
-            validator_index == get_beacon_proposer_index(state, slot, registry_change);
-
-        return Optional.of(new CommitteeAssignmentTuple(validators, shard, slot, is_proposer));
-      }
-    }
-    return Optional.empty();
-  }
 
   /*
   // Imported from ValidatorClient (was not being used)
