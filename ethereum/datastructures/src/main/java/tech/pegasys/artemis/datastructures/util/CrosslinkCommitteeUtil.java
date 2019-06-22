@@ -53,31 +53,7 @@ public class CrosslinkCommitteeUtil {
   public static Integer get_shuffled_index(int index, int index_count, Bytes32 seed) {
     checkArgument(index < index_count, "CrosslinkCommitteeUtil.get_shuffled_index1");
     checkArgument(index_count <= Math.pow(2, 40), "CrosslinkCommitteeUtil.get_shuffled_index2");
-    /*
 
-    // Swap or not (https://link.springer.com/content/pdf/10.1007%2F978-3-642-32009-5_1.pdf)
-    // See the 'generalized domain' algorithm on page 3
-    for (int round = 0; round < SHUFFLE_ROUND_COUNT; round++) {
-      Bytes roundBytes = int_to_bytes(round, 1);
-
-      Bytes32 pivotHashValue = Hash.sha2_256(Bytes.concatenate(seed, roundBytes));
-      Bytes pivotHashSubArray = Bytes.wrap(ArrayUtils.subarray(pivotHashValue.toArray(), 0, 8));
-      int pivot = safeMod(((int) bytes_to_int(pivotHashSubArray)), index_count);
-
-      int flip = safeMod((pivot + index_count - index), index_count);
-      int position = Math.max(index, flip);
-
-      Bytes sourceBytes =
-          Bytes.concatenate(seed, roundBytes, int_to_bytes(Math.floorDiv(position, 256l), 4));
-      Bytes32 source = Hash.sha2_256(sourceBytes);
-
-      int sourceByteIndex = toIntExact(Math.floorDiv(safeMod(position, 256), 8l));
-      byte byteValue = source.get(sourceByteIndex);
-      int bit = safeMod(byteValue >> safeMod(position, 8), 2);
-      index = (bit == 1) ? flip : index;
-    }
-    return index;
-    */
     int indexRet = index;
     byte[] powerOfTwoNumbers = {1, 2, 4, 8, 16, 32, 64, (byte) 128};
 
