@@ -22,6 +22,7 @@ import org.apache.tuweni.bytes.Bytes;
 import tech.pegasys.teku.bls.BLSSignatureVerifier;
 import tech.pegasys.teku.bls.BLSSignatureVerifier.InvalidSignatureException;
 import tech.pegasys.teku.core.BlockProcessorUtil;
+import tech.pegasys.teku.core.BlockVoluntaryExitValidator;
 import tech.pegasys.teku.core.StateTransitionException;
 import tech.pegasys.teku.core.exceptions.BlockProcessingException;
 import tech.pegasys.teku.datastructures.blocks.BeaconBlock;
@@ -80,8 +81,8 @@ public class SimpleBlockValidator implements BlockValidator {
         BlockProcessorUtil.verify_randao(preState, blockMessage, signatureVerifier);
         BlockProcessorUtil.verify_proposer_slashings(
             preState, blockBody.getProposer_slashings(), signatureVerifier);
-        BlockProcessorUtil.verify_voluntary_exits(
-            preState, blockBody.getVoluntary_exits(), signatureVerifier);
+        new BlockVoluntaryExitValidator(signatureVerifier)
+            .validateBlockExitsAndThrow(preState, blockBody.getVoluntary_exits().asList());
       }
       return SafeFuture.completedFuture(new BlockValidationResult(true));
     } catch (BlockProcessingException | InvalidSignatureException e) {

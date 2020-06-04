@@ -31,7 +31,6 @@ import static tech.pegasys.teku.datastructures.util.CommitteeUtil.get_beacon_com
 import static tech.pegasys.teku.datastructures.util.ValidatorsUtil.is_slashable_validator;
 import static tech.pegasys.teku.util.config.Constants.DOMAIN_BEACON_PROPOSER;
 import static tech.pegasys.teku.util.config.Constants.DOMAIN_RANDAO;
-import static tech.pegasys.teku.util.config.Constants.DOMAIN_VOLUNTARY_EXIT;
 import static tech.pegasys.teku.util.config.Constants.EPOCHS_PER_ETH1_VOTING_PERIOD;
 import static tech.pegasys.teku.util.config.Constants.EPOCHS_PER_HISTORICAL_VECTOR;
 import static tech.pegasys.teku.util.config.Constants.MAX_DEPOSITS;
@@ -55,7 +54,6 @@ import tech.pegasys.teku.bls.BLSPublicKey;
 import tech.pegasys.teku.bls.BLSSignatureVerifier;
 import tech.pegasys.teku.bls.BLSSignatureVerifier.InvalidSignatureException;
 import tech.pegasys.teku.core.BlockAttestationDataValidator.AttestationInvalidReason;
-import tech.pegasys.teku.core.BlockVoluntaryExitValidator.ExitInvalidReason;
 import tech.pegasys.teku.core.exceptions.BlockProcessingException;
 import tech.pegasys.teku.datastructures.blocks.BeaconBlock;
 import tech.pegasys.teku.datastructures.blocks.BeaconBlockBody;
@@ -67,7 +65,6 @@ import tech.pegasys.teku.datastructures.operations.Deposit;
 import tech.pegasys.teku.datastructures.operations.IndexedAttestation;
 import tech.pegasys.teku.datastructures.operations.ProposerSlashing;
 import tech.pegasys.teku.datastructures.operations.SignedVoluntaryExit;
-import tech.pegasys.teku.datastructures.operations.VoluntaryExit;
 import tech.pegasys.teku.datastructures.state.BeaconState;
 import tech.pegasys.teku.datastructures.state.BeaconStateCache;
 import tech.pegasys.teku.datastructures.state.MutableBeaconState;
@@ -484,28 +481,17 @@ public final class BlockProcessorUtil {
       MutableBeaconState state, SSZList<SignedVoluntaryExit> exits)
       throws BlockProcessingException {
 
-    try {
-      process_voluntary_exits_no_validation(state, exits);
-      verify_voluntary_exits(state, exits, BLSSignatureVerifier.SIMPLE);
-    } catch (InvalidSignatureException e) {
-      throw new BlockProcessingException(e);
-    }
+    new BlockVoluntaryExitValidator().validateBlockExitsAndThrow(state, exits.asList());
+    process_voluntary_exits_no_validation(state, exits);
   }
 
   public static void process_voluntary_exits_no_validation(
       MutableBeaconState state, SSZList<SignedVoluntaryExit> exits)
       throws BlockProcessingException {
-    BlockVoluntaryExitValidator validator = new BlockVoluntaryExitValidator();
     try {
 
       // For each exit in block.body.voluntaryExits:
       for (SignedVoluntaryExit signedExit : exits) {
-        Optional<ExitInvalidReason> invalidReason = validator.validateExit(state, signedExit);
-        checkArgument(
-            invalidReason.isEmpty(),
-            "process_voluntary_exits: %s",
-            invalidReason.map(ExitInvalidReason::describe).orElse(""));
-
         // - Run initiate_validator_exit(state, exit.validator_index)
         initiate_validator_exit(
             state, toIntExact(signedExit.getMessage().getValidator_index().longValue()));
@@ -513,29 +499,6 @@ public final class BlockProcessorUtil {
     } catch (IllegalArgumentException e) {
       LOG.warn(e.getMessage());
       throw new BlockProcessingException(e);
-    }
-  }
-
-  public static void verify_voluntary_exits(
-      BeaconState state, SSZList<SignedVoluntaryExit> exits, BLSSignatureVerifier signatureVerifier)
-      throws InvalidSignatureException {
-    for (SignedVoluntaryExit signedExit : exits) {
-      final VoluntaryExit exit = signedExit.getMessage();
-
-      BLSPublicKey publicKey =
-          BeaconStateCache.getTransitionCaches(state)
-              .getValidatorsPubKeys()
-              .get(
-                  exit.getValidator_index(),
-                  idx -> state.getValidators().get(toIntExact(idx.longValue())).getPubkey());
-
-      final Bytes domain = get_domain(state, DOMAIN_VOLUNTARY_EXIT, exit.getEpoch());
-      final Bytes signing_root = compute_signing_root(exit, domain);
-      signatureVerifier.verifyAndThrow(
-          publicKey,
-          signing_root,
-          signedExit.getSignature(),
-          "process_voluntary_exits: Verify signature");
     }
   }
 }

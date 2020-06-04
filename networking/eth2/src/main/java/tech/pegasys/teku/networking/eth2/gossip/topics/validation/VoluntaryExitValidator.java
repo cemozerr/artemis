@@ -14,7 +14,6 @@
 package tech.pegasys.teku.networking.eth2.gossip.topics.validation;
 
 import static com.google.common.base.Preconditions.checkArgument;
-import static tech.pegasys.teku.core.BlockProcessorUtil.verify_voluntary_exits;
 import static tech.pegasys.teku.networking.eth2.gossip.topics.validation.ValidationResult.INVALID;
 import static tech.pegasys.teku.networking.eth2.gossip.topics.validation.ValidationResult.VALID;
 import static tech.pegasys.teku.util.config.Constants.VALID_VALIDATOR_SET_SIZE;
@@ -24,11 +23,9 @@ import java.util.Optional;
 import java.util.Set;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import tech.pegasys.teku.bls.BLSSignatureVerifier;
 import tech.pegasys.teku.core.BlockVoluntaryExitValidator;
 import tech.pegasys.teku.datastructures.operations.SignedVoluntaryExit;
 import tech.pegasys.teku.datastructures.state.BeaconState;
-import tech.pegasys.teku.ssz.SSZTypes.SSZList;
 import tech.pegasys.teku.storage.client.RecentChainData;
 import tech.pegasys.teku.util.collections.ConcurrentLimitedSet;
 import tech.pegasys.teku.util.collections.LimitStrategy;
@@ -79,8 +76,7 @@ public class VoluntaryExitValidator {
           invalidReason.isEmpty(),
           "process_voluntary_exit: %s",
           invalidReason.map(BlockVoluntaryExitValidator.ExitInvalidReason::describe).orElse(""));
-      verify_voluntary_exits(state, SSZList.singleton(exit), BLSSignatureVerifier.SIMPLE);
-    } catch (IllegalArgumentException | BLSSignatureVerifier.InvalidSignatureException e) {
+    } catch (IllegalArgumentException e) {
       LOG.trace("VoluntaryExitValidator: Exit fails process voluntary exit conditions.", e);
       return false;
     }
